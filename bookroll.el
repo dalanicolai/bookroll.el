@@ -35,13 +35,13 @@
 Each element has the form (WINDOW . ALIST).
 See `bookroll-mode-winprops'.")
 
-(defcustom br-scroll-fraction 4
+(defcustom br-scroll-fraction 10
   "Set the scroll step size in 1/fraction of page.")
 
 (defvar-local split-regexp "^[0-9]") ;; for column of numbers as placeholders
 (defvar-local split-point-offset 1)
 
-(defvar-local overlays nil)
+(defvar-local overlays-list nil)
 (defvar-local image-sizes nil)
 ;; (defvar-local image-sizes nil)
 (defvar-local image-positions nil)
@@ -193,12 +193,12 @@ otherwise it defaults to t, used for times when the buffer is not displayed."
                (svg-image (svg-create w h))))
 
 (defun br-create-overlays-list (&optional include-first)
-  "Create list over overlays spread out over the buffer contents.
+  "Create list of overlays spread out over the buffer contents.
 Pass non-nil value for include-first when the buffer text starts with a match."
   ;; first overlay starts at 1
   (let ((beg (goto-char (point-min))))
     (when include-first
-      (setq overlays (list (make-overlay beg
+      (setq overlays-list (list (make-overlay beg
                                          (search-forward-regexp split-regexp
                                                                 nil
                                                                 t))))
@@ -212,34 +212,34 @@ Pass non-nil value for include-first when the buffer text starts with a match."
                    (cddr image-sizes)
                  (cdr image-sizes)))
       (search-forward-regexp split-regexp nil t)
-      (push (make-overlay beg (- (point) 1 split-point-offset)) overlays)
+      (push (make-overlay beg (- (point) 1 split-point-offset)) overlays-list)
       (setq beg (- (point) 1)))
-    (push (make-overlay beg (point-max)) overlays)
-    (setq overlays (nreverse overlays))))
+    (push (make-overlay beg (point-max)) overlays-list)
+    ;; (print overlays-list)))
+    (setq overlays-list (nreverse overlays-list))))
 
 ;; TODO replace test sizes
 (defun br-create-placeholders ()
-  (let ((ph (br-create-empty-page '(800 . 1600)))
-        (constant-size (cl-every #'eql image-sizes (cdr image-sizes))))
-      (dotimes (i (length image-sizes))
-        (overlay-put (nth i overlays) 'display (if constant-size
-                                                   ph
-                                                 (br-create-empty-page (nth i image-sizes)))))))
+  (let* ((constant-size (cl-every #'eql image-sizes (cdr image-sizes)))
+         (ph (when constant-size (br-create-empty-page (car image-sizes)))))
+    (dotimes (i (length image-sizes))
+      ;; (let ((p (1+ i)));; shift by 1 to match with page numbers
+        (overlay-put (nth i overlays-list) 'display (or ph (br-create-empty-page (nth i image-sizes)))))))
 
 (defun br-current-page ()
   (interactive)
   (let ((i 0)
-        (cur-pos (window-vscroll nil t)))
-    (while (<= (nth (1+ i) image-positions) (+ cur-pos (/ (window-pixel-height) 2)))
-      (setq i (1+ i)))
-    (1+ i)))
+              (cur-pos (window-vscroll nil t)))
+          (while (<= (nth (1+ i) image-positions) (+ cur-pos (/ (window-pixel-height) 2)))
+            (setq i (1+ i)))
+          (1+ i)))
     ;; (while (<= (print (nth (1+ i) image-positions)) (print (+ cur-pos (/ (window-pixel-height) 2))))
     ;;   (setq i (1+ i)))
     ;; (print (1+ i))))
 
 (defun br-display-page (page image)
   (let ((elt (- page 1)))
-    (overlay-put (nth elt overlays) 'display image)))
+    (overlay-put (nth elt overlays-list) 'display image)))
                  ;; (pcase (% page 3)
                  ;;                               (0 im1)
                  ;;                               (1 im2)
@@ -247,7 +247,7 @@ Pass non-nil value for include-first when the buffer text starts with a match."
 
 (defun br-undisplay-page (page)
   (let ((elt (- page 1)))
-    (overlay-put (nth elt overlays)
+    (overlay-put (nth elt overlays-list)
                  'display
                   (br-create-empty-page (car image-sizes)))))
 
@@ -261,17 +261,19 @@ Pass non-nil value for include-first when the buffer text starts with a match."
         (br-undisplay-page p)))
     (dolist (p display-pages)
       ;; TODO separate pdf function from bookroll package
-      (br-display-page p (pdf-view-create-page p)))
+      ;; (br-display-page p (pdf-view-create-page p)))
+      (pdf-view-display-image (pdf-view-create-page p)))
     (setq currently-displayed-pages display-pages)))
 
 (defun br-goto-page (page)
   (interactive "n")
-  (br-update-page-triplet page)
+  ;; (br-update-page-triplet page)
+  (pdf-view-display-image page)
   (let* ((elt (- page 1)))
     (set-window-vscroll nil (nth elt image-positions) t)))
 
-;; (defun br-scroll-up ()
-(defun pdf-view-next-line-or-next-page ()
+(defun br-scroll-up ()
+;; (defun pdf-view-next-line-or-next-page ()
   (interactive)
   ;; because pages could have different heights, we calculate the step size on each scroll
   ;; TODO define constant scroll size if doc has single page height
@@ -279,11 +281,11 @@ Pass non-nil value for include-first when the buffer text starts with a match."
     (set-window-vscroll nil (+ (window-vscroll nil t) scroll-step-size) t)
     ;; when current page changed after scrolling then update displayed pages
     (let ((current-page (print (br-current-page))))
-        (br-update-page-triplet current-page))))
+      (pdf-view-display-image current-page))))
 
 ;; TODO separate pdf functions from bookroll package
-;; (defun br-scroll-down ()
-(defun pdf-view-previous-line-or-previous-page ()
+(defun br-scroll-down ()
+;; (defun pdf-view-previous-line-or-previous-page ()
   (interactive)
   ;; because pages could have different heights, we calculate the step size on each scroll
   ;; TODO define constant scroll size if doc has single page height
@@ -291,14 +293,29 @@ Pass non-nil value for include-first when the buffer text starts with a match."
     (set-window-vscroll nil (- (window-vscroll nil t) scroll-step-size) t)
     ;; when current page changed after scrolling then update displayed pages
     (let ((current-page (print (br-current-page))))
-      (br-update-page-triplet current-page))))
+      (pdf-view-display-image current-page))))
+
+(defun br-next-page (&optional n)
+  "View the next page in the PDF.
+
+Optional parameter N moves N pages forward."
+  (interactive "p")
+  (br-goto-page (+ (br-current-page)
+                   (or n 1))))
+
+(defun br-previous-page (&optional n)
+  "View the previous page in the PDF.
+
+Optional parameter N moves N pages backward."
+  (interactive "p")
+  (br-next-page (- (or n 1))))
 
 (define-minor-mode bookroll-mode
   "This is a continuous scroll engine for rendering books."
   :keymap
-  '(("j" . pdf-view-next-line-or-next-page)
-    ("k" . pdf-view-previous-line-or-previous-page)))
+  '(("j" . br-scroll-up)
+    ("k" . br-scroll-down)))
 
 (when (boundp 'evil-version)
-  (evil-define-key 'normal bookroll-mode-map "j" 'br-scroll-up)
-  (evil-define-key 'normal bookroll-mode-map "k" 'br-scroll-down))
+  (evil-define-key 'evilified bookroll-mode-map "j" 'br-scroll-up)
+  (evil-define-key 'evilified bookroll-mode-map "k" 'br-scroll-down))
