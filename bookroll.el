@@ -262,13 +262,13 @@ Pass non-nil value for include-first when the buffer text starts with a match."
     (dolist (p display-pages)
       ;; TODO separate pdf function from bookroll package
       ;; (br-display-page p (pdf-view-create-page p)))
-      (pdf-view-display-image (pdf-view-create-page p)))
+      (pdf-view-display-triplet (pdf-view-create-page p)))
     (setq currently-displayed-pages display-pages)))
 
 (defun br-goto-page (page)
   (interactive "n")
   ;; (br-update-page-triplet page)
-  (pdf-view-display-image page)
+  (pdf-view-display-triplet page)
   (let* ((elt (- page 1)))
     (set-window-vscroll nil (nth elt image-positions) t)))
 
@@ -281,7 +281,7 @@ Pass non-nil value for include-first when the buffer text starts with a match."
     (set-window-vscroll nil (+ (window-vscroll nil t) scroll-step-size) t)
     ;; when current page changed after scrolling then update displayed pages
     (let ((current-page (print (br-current-page))))
-      (pdf-view-display-image current-page))))
+      (pdf-view-display-triplet current-page))))
 
 ;; TODO separate pdf functions from bookroll package
 (defun br-scroll-down ()
@@ -293,7 +293,7 @@ Pass non-nil value for include-first when the buffer text starts with a match."
     (set-window-vscroll nil (- (window-vscroll nil t) scroll-step-size) t)
     ;; when current page changed after scrolling then update displayed pages
     (let ((current-page (print (br-current-page))))
-      (pdf-view-display-image current-page))))
+      (pdf-view-display-triplet current-page))))
 
 (defun br-next-page (&optional n)
   "View the next page in the PDF.
